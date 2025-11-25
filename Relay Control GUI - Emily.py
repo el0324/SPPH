@@ -22,21 +22,28 @@ TITLE_FONT    = ('Arial', 40, 'bold')
 INPUT_FONT    = ('Arial', 50)
 REGULAR_FONT  = ('Arial', 30)
 STOP_FONT     = ('Arial', 40, 'bold')
-FIELDNAMES    = ['RUN', 'RELAY', 'START TIME', 'END TIME']
+PINLIST       = [41, 40, 39, 38, 37, 36, 35, 34, 
+                 33, 32, 31, 30, 29, 28, 27, 26]
+RELAY_NAMES   = ["Relay 1", "Relay 2", "Relay 3", "Relay 4", "Relay 5",
+                 "Relay 6", "Relay 7", "Relay 8", "Relay 9", "Relay 10",
+                 "Relay 11", "Relay 12", "Relay 13", "Relay 14", "Relay 15",
+                 "Relay 16"]
+FIELDNAMES    = ['RUN', 'DELAY', 'RELAY', 'START TIME', 'END TIME']
 DATE          = datetime.date(datetime.today())
 
 #============================== Global Variables =============================#
 # test variables
-PinList           = []
-Relay_Names       = []
-run_test          = False
-delay             = 0.0
-relay_open        = "Off"
-start_time        = 0.0
-local_start_time  = 0.0
-end_time          = 0.0
-elapsed           = 0.0
-selected_run      = ""
+run_test          = False   # Indicates if a testing is running or not
+delay             = 0.0     # Delay time between each relay for automated run
+relay_open        = "Off"   # Relay that is currently open ("Off" means default 
+                            # state)
+start_time        = 0.0     # Time that automated/manual run was started
+local_start_time  = 0.0     # Time that automated/manual run was started (used 
+                            # for logging)
+end_time          = 0.0     # Time that automated/manual run was completed/stopped
+elapsed           = 0.0     # Percentage of run time completed
+selected_run      = ""      # Which run (automated or manual) is currently being 
+                            # ran (used for logging)
 
 # tkinter variables
 background              = tk.PhotoImage(file="./birchbg.png")
@@ -48,43 +55,26 @@ relay_time              = Entry()
 selected_relay_text     = Canvas()
 completion_text         = Canvas()
 
-
-
 #================================ Functions ==================================#
-def set_relay_names():
-  """ Define the pins as well as the name of the relays so that their indexing 
-  will match up. Pin 26 is the first Relay (which I define to behave 
-  differently from the rest), Pin 41 is the final Relay. """
-  global PinList
-  global Relay_Names
-
-  # set pin list
-  PinList = list(reversed(range(26,42)))
-
-  # set relay names "Relay 1, etc."
-  Relay_Names = list(range(1,len(PinList)+1))
-  for i in range(0,(len(Relay_Names))):
-      Relay_Names[i] = ("Relay " + str(Relay_Names[i]))
-
 def default_state():
   """ Sets the default state. Turn everyone off but the first relay, and set 
   the initial logic for some global variables. """  
   global run_test
   global relay_open
-  global completion_text
-  global selected_relay_text
-  global elapsed
   global start_time
   global local_start_time
   global end_time
+  global elapsed
   global selected_run
+  global selected_relay_text
+  global completion_text
 
   # turn all relays off
   for i in range(26,42):
       BOARD.digital[i].write(1)
   
   # keep the first relay on
-  BOARD.digital[PinList[0]].write(1)
+  BOARD.digital[PINLIST[0]].write(1)
 
   # reset completion and selected relay
   run_test = False
@@ -101,23 +91,30 @@ def default_state():
   end_time = 0.0
   selected_run = ""
   
-def logging(run: str, relay: str, start, end):
+def logging(run: str, delay, relay: str, start, end):
   """ Logs data to a .csv file with the name of the file being the date it was
-  created (ex. 11-14-2025.csv). The log data include the type of run (automated
-  or manual), when the run started, and when the run was completed/ended """
+  created (ex. 11-14-2025.csv). Log files are created with the "Logs" folder. 
+  The log data include the type of run (automated or manual), the delay time, 
+  which relay is open, when the run started, and when the run was 
+  completed/ended """
 
   # convert timestamps into local time
-  start = time.strftime("%H:%M:%S", start)
-  end = time.strftime("%H:%M:%S", end)
+  if run == " ":
+    start = " "
+    end = " "
+  else:
+    start = time.strftime("%H:%M:%S", start)
+    end = time.strftime("%H:%M:%S", end)
 
   # format data
   data = {'RUN': f'{run}', 
+          'DELAY': f'{delay}',
           'RELAY': f'{relay}', 
           'START TIME': f'{start}', 
           'END TIME': f'{end}'}
 
   if run != "":
-    with open(f'{DATE}.csv', 'a', newline='') as csvfile:
+    with open(f'./Logs/{DATE}.csv', 'a', newline='') as csvfile:
       writer = csv.DictWriter(csvfile, fieldnames=FIELDNAMES)
       writer.writerow(data)
 
@@ -129,19 +126,26 @@ def button_stop_command():
   global run_test
   global button_start
   global button_manual
+  global delay
   global relay_open
   global local_start_time
   global end_time
   global selected_run
   global selected_relay
+  global relay_open
 
   # get end time
   end_time = time.localtime()
 
+  # set data based on run
+  if selected_run == "AUTOMATED":
+    selected_relay = relay_open
+  elif selected_run == "MANUAL":
+    delay = None
+
   # log data
-  if selected_run == "Automated":
-    selected_relay = "x"
-  logging(selected_run, selected_relay, local_start_time, end_time)
+  logging(selected_run, delay, selected_relay, local_start_time, end_time)
+  logging(" ", " ", " ", local_start_time, end_time)
 
   # reset GUI settings
   run_test = False
@@ -170,7 +174,7 @@ def button_start_command():
 
   
   # if transitioning from manual to automated code, intial to default state
-  if selected_run == "Manual":
+  if selected_run == "MANUAL":
     MY_CANVAS.delete(completion_text)
     MY_CANVAS.delete(selected_relay_text)
     default_state()
@@ -179,13 +183,14 @@ def button_start_command():
   delay = float(relay_time.get())
   start_time = time.time()
   local_start_time = time.localtime()
-  selected_run = "Automated"
+  selected_run = "AUTOMATED"
 
   # prepare to start test
   run_test = True
   current_relay = 1
 
-  while current_relay <= (len(PinList)-1) and run_test:
+  # automated run loop
+  while current_relay <= (len(PINLIST)-1) and run_test:
     # Disable start buttons once this loop starts so nothing gets pressed twice
     # and open multiple samplers
     button_start['state'] = tk.DISABLED 
@@ -193,16 +198,22 @@ def button_start_command():
     button_exit['state'] = tk.DISABLED
 
     # open one relay, wait for delay amount of time, then close relay
-    relay_open = Relay_Names[current_relay]
-    BOARD.digital[PinList[current_relay]].write(0)
-    BOARD.digital[PinList[0]].write(0)
+    relay_open = RELAY_NAMES[current_relay]
+    BOARD.digital[PINLIST[current_relay]].write(0)
+    BOARD.digital[PINLIST[0]].write(0)
+    relay_start_time = time.localtime()
     time.sleep(delay)
     current_relay += 1
-    BOARD.digital[PinList[current_relay-1]].write(1)
+    BOARD.digital[PINLIST[current_relay-1]].write(1)
+    relay_end_time = time.localtime()
+
+    # log start/end time for relay
+    logging(selected_run, delay, relay_open, relay_start_time, relay_end_time)
 
   # get end time and log data
   end_time = time.localtime()
-  logging(selected_run, 'x', local_start_time, end_time)
+  logging(selected_run, delay, 'Complete automated run', local_start_time, end_time)
+  logging(" ", " ", " ", local_start_time, end_time)
 
   # return to default state once run is complete
   MY_CANVAS.delete(completion_text)
@@ -212,6 +223,7 @@ def button_start_command():
   # Re-enable buttons once test is done
   button_start['state'] = tk.NORMAL
   button_manual['state'] = tk.NORMAL
+  button_exit['state'] = tk.NORMAL
 
 def button_starter():
   t = threading.Thread(target=button_start_command)
@@ -243,7 +255,7 @@ def manual_start():
 
   # set start time and selected run
   local_start_time = time.localtime()
-  selected_run = "Manual"
+  selected_run = "MANUAL"
 
   # If off is selected, return to default state
   if selected_relay == "Off": 
@@ -260,8 +272,8 @@ def manual_start():
       if manual_options[i] == selected_relay:
         position.append(i)
         int_result = int(''.join(map(str, position)))
-        BOARD.digital[PinList[int_result]].write(0)
-        BOARD.digital[PinList[0]].write(0)
+        BOARD.digital[PINLIST[int_result]].write(0)
+        BOARD.digital[PINLIST[0]].write(0)
     relay_open = selected_relay
 
 #================================= Widgets: ==================================#
@@ -290,7 +302,7 @@ def setup_window():
 
   #================= Left Side =================#
   #Manual Drop Down Menu:
-  manual_options  = list(Relay_Names)
+  manual_options  = list(RELAY_NAMES)
   manual_options[0] = "Off"
   selected_manual_option = tk.StringVar(WIN)
   selected_manual_option.set(manual_options[0]) # default value
@@ -369,7 +381,7 @@ def timeupdate():
   # calculate run progress
   if button_start['state']==tk.NORMAL:
     start_time = 0.0
-  elif button_start['state']==tk.DISABLED and selected_run=="Automated":
+  elif button_start['state']==tk.DISABLED and selected_run=="AUTOMATED":
     elapsed = (time.time() - start_time)*100/(16*delay)
 
   # update text in GUI
@@ -389,7 +401,7 @@ def close_gui():
   # checks if a test is running before closing the GUI
   if button_start['state']==tk.NORMAL:
     default_state()
-    BOARD.digital[PinList[0]].write(1)
+    BOARD.digital[PINLIST[0]].write(1)
     print("Closing GUI")
     sys.exit(0)
   else:
@@ -398,8 +410,7 @@ def close_gui():
 #=================================== Main ====================================#
 def main():
   """ The main function that is called when the Python script is ran """
-  # configure LEDs
-  set_relay_names()
+  # configure relays
   default_state()
 
   # initialize/setup window
@@ -407,7 +418,7 @@ def main():
   setup_window()
 
   # create log file
-  with open(f'{DATE}.csv', 'a', newline='') as csvfile:
+  with open(f'./Logs/{DATE}.csv', 'a', newline='') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=FIELDNAMES)
     writer.writeheader()
 
