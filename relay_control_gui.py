@@ -36,6 +36,10 @@ RELAY_FIELDNAMES  = ['RUN', 'DELAY (s)', 'RELAY', 'START TIME', 'END TIME',
                      'SENSOR']
 SENSOR_FIELDNAMES = ['RUN', 'RELAY', 'TIME', 'SENSOR VALUE', 'STATUS']
 DATE              = datetime.date(datetime.today())
+LOWER_OPEN_THRES  = 0.1545
+UPPER_OPEN_THRES  = 0.1848
+LOWER_AMB_THRES   = -0.009
+UPPER_AMB_THRES   = 0.002
 
 #============================== Global Variables =============================#
 # test variables
@@ -295,13 +299,13 @@ def format_sensor_data(data) -> None:
   
   # update sensor status based on measurement
   # # TO DO: test range for 9.8 - 10.3L/min
-  if sensor_val > 0.152 and sensor_val < 0.187: # normal operations
+  if sensor_val >= LOWER_OPEN_THRES and sensor_val <= UPPER_OPEN_THRES: # normal operations
     sensor_status_text = "OPEN"
     sensor_text_bd = "#00cc1f"
-  elif sensor_val > -0.009 and sensor_val < 0.002:  # ambient
+  elif sensor_val > LOWER_AMB_THRES and sensor_val < UPPER_AMB_THRES:  # ambient
     sensor_status_text = "AMBIENT"
     sensor_text_bd = "#6B6B6E"
-  elif sensor_val < 0.152:  # leak
+  elif sensor_val < LOWER_OPEN_THRES:  # leak
     sensor_status_text = "LEAK"
     sensor_text_bd = "#cc0000"
   else: # pressure is not within desired range (either greater or less than expected)
